@@ -178,17 +178,3 @@ Contributions are welcome. A minimal suggested workflow:
 5. Open a pull request with a clear description of the change.
 
 If you're adding or changing the Prisma schema, please include migration files or document how to apply changes locally.
-
-## License
-
-This project is provided under the MIT license. See `LICENSE` for details (if you want me to add a LICENSE file I can add an MIT license file for you).
-
----
-
-If you'd like, I can also:
-
-- Add a small backfill script to compute `pointsBalance` from existing approved `Points` rows.
-- Add automated tests for the admin approval and coupon purchase flows.
-- Add a sample `.env.example` file (without secrets) to the repo.
-
-If you want any of those, tell me which and I'll add them next.
