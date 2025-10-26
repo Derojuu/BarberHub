@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int     @id @default(autoincrement())
+  username  String  @unique
+  email     String  @unique
+  password  String
+  role      String  @default("customer") // "customer" or "admin"
+  pointsBalance Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  points    Points[]
+  coupons   Coupon[]
+}
+
+model Haircut {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String
+  price       Float
+  pointValue  Int     // Points earned after admin approval
+  image       String  // Path to local image
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  points Points[]
+}
+
+model Points {
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  haircutId Int
+  haircut   Haircut @relation(fields: [haircutId], references: [id], onDelete: Cascade)
+  points    Int
+  status    String  @default("pending") // "pending" or "approved"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String  @unique
+  isUsed    Boolean @default(false)
+  expiryDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
