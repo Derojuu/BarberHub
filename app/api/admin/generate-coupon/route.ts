@@ -1,52 +1,23 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
-import { verifyToken } from "@/lib/auth"
-import { nanoid } from "nanoid"
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const token = request.headers.get("authorization")?.replace("Bearer ", "")
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const body = await request.json()
+    // validation
+    const code = String(body?.code ?? `C-${Date.now().toString(36)}`)
 
-    const decoded = verifyToken(token)
-    if (!decoded || decoded.role !== "admin") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
-    }
-
-    const { userId, expiryDate } = await request.json()
-
-    if (!userId) {
-      return NextResponse.json({ error: "Missing userId" }, { status: 400 })
-    }
-
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: Number.parseInt(userId) },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
-
-    // Generate unique coupon code
-    const couponCode = `BARBER-FREE-${nanoid(8).toUpperCase()}`
+    // server-only DB call
+    const data: any = { code, isUsed: false }
+    if (body?.expiresAt) data.expiresAt = new Date(body.expiresAt)
 
     const coupon = await prisma.coupon.create({
-      data: {
-        userId: Number.parseInt(userId),
-        code: couponCode,
-        isUsed: false,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-      },
+      data,
     })
 
-    return NextResponse.json({ coupon }, { status: 201 })
-  } catch (error) {
-    console.error("Generate coupon error:", error)
+    return NextResponse.json({ coupon })
+  } catch (err) {
+    console.error("generate-coupon error:", err)
     return NextResponse.json({ error: "Failed to generate coupon" }, { status: 500 })
   }
 }
