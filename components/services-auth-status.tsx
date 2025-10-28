@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { updateLocalUserBalance } from "@/lib/utils"
 
 export default function ServicesAuthStatus({ onRefresh }: { onRefresh?: () => void }) {
   const [user, setUser] = useState<{ username?: string; email?: string } | null>(null)
@@ -15,19 +16,20 @@ export default function ServicesAuthStatus({ onRefresh }: { onRefresh?: () => vo
   }, [])
 
   async function fetchPoints() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+    const token = localStorage.getItem("token")
     if (!token) return
-    setLoading(true)
     try {
-      const res = await fetch("/api/customer/points", { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch("/api/customer/points", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
       const data = await res.json()
       if (res.ok) {
-        setPoints(data.totalPoints ?? 0)
+        const pts = data.pointsBalance ?? data.points ?? data.totalPoints ?? 0
+        setPoints(Number(pts))
+        updateLocalUserBalance(Number(pts))
+      } else {
+        setPoints(0)
       }
-    } catch (err) {
-      // ignore
-    } finally {
-      setLoading(false)
+    } catch (e) {
+      console.error(e)
     }
   }
 

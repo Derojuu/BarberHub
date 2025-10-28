@@ -7,64 +7,61 @@ const prisma = new PrismaClient()
 export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get("authorization")?.replace("Bearer ", "")
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const decoded = verifyToken(token)
-    if (!decoded || decoded.role !== "admin") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
-    }
+    if (!decoded || decoded.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
     const { pointsId, status } = await request.json()
-
     if (!pointsId || !["approved", "denied"].includes(status)) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
     }
 
-    const pid = Number.parseInt(pointsId)
+    const pid = Number(pointsId)
+    if (!Number.isFinite(pid)) return NextResponse.json({ error: "Invalid pointsId" }, { status: 400 })
 
     // Load existing points record to detect status transition
     const existing = await prisma.points.findUnique({ where: { id: pid } })
-    if (!existing) {
-      return NextResponse.json({ error: "Points record not found" }, { status: 404 })
-    }
+    if (!existing) return NextResponse.json({ error: "Points record not found" }, { status: 404 })
 
-    // Update points status and adjust user's pointsBalance atomically with safety checks
-    const updatedPoints = await prisma.$transaction(async (tx) => {
-      const updated = await tx.points.update({
+    const updated = await prisma.$transaction(async (tx) => {
+      // update points record status first
+      const updatedPoints = await tx.points.update({
         where: { id: pid },
         data: { status },
-        include: { user: true, haircut: true },
       })
 
-      // Load user's current balance inside the transaction
-  const userRecord = (await tx.user.findUnique({ where: { id: updated.userId } })) as any
-  if (!userRecord) throw new Error("User not found")
+      // only adjust user's pointsBalance when status actually changes
+      if (existing.status !== updatedPoints.status) {
+        const pts = Number(existing.points ?? 0)
+        const userId = existing.userId
 
-  let newBalance = (userRecord.pointsBalance ?? 0) as number
+        // load user
+        const user = await tx.user.findUnique({ where: { id: userId } })
+        if (!user) throw new Error("User not found")
 
-      // If status changed to approved from non-approved, increment user's balance
-      if (existing.status !== "approved" && status === "approved") {
-        newBalance = newBalance + updated.points
+        let newBalance = Number(user.pointsBalance ?? 0)
+        if (existing.status !== "approved" && updatedPoints.status === "approved") {
+          // pending -> approved : add points
+          newBalance = newBalance + pts
+        } else if (existing.status === "approved" && updatedPoints.status !== "approved") {
+          // approved -> denied/revoked : subtract points (safety)
+          newBalance = Math.max(0, newBalance - pts)
+        }
+
+        // persist new balance
+        await tx.user.update({
+          where: { id: userId },
+          data: { pointsBalance: newBalance },
+        })
       }
 
-      // If previously approved but now changed away from approved, decrement user's balance (clamp at 0)
-      if (existing.status === "approved" && status !== "approved") {
-        newBalance = Math.max(0, newBalance - updated.points)
-      }
-
-      // Persist new balance if it changed
-      if (newBalance !== (userRecord.pointsBalance ?? 0)) {
-        await tx.user.update({ where: { id: updated.userId }, data: ({ pointsBalance: newBalance } as any) })
-      }
-
-      return updated
+      return updatedPoints
     })
 
-    return NextResponse.json({ updatedPoints })
+    return NextResponse.json({ points: updated })
   } catch (error) {
-    console.error("Validate points error:", error)
+    console.error("validate-points error:", error)
     return NextResponse.json({ error: "Failed to validate points" }, { status: 500 })
   }
 }

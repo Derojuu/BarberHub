@@ -70,7 +70,7 @@ export default function Dashboard() {
             <h1 className="text-4xl font-bold text-primary">Welcome, {user.username}!</h1>
             <button
               onClick={handleLogout}
-              className="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-light transition"
+              className="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition focus:outline-none focus:ring-2 focus:ring-primary"
             >
               Logout
             </button>

@@ -1,23 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { toast } from "sonner"
 
 export default function AdminHaircutsPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [price, setPrice] = useState(0)
-  const [pointValue, setPointValue] = useState(0)
+  // use string states for numeric fields so input doesn't start as "0"
+  const [priceStr, setPriceStr] = useState("")
+  const [pointValueStr, setPointValueStr] = useState("")
   const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!file) {
+      setPreview(null)
+      return
+    }
+    const fr = new FileReader()
+    fr.onload = () => setPreview(String(fr.result))
+    fr.readAsDataURL(file)
+    return () => fr.abort && fr.abort()
+  }, [file])
+
+  // simple numeric input sanitizer: allow digits and optional decimal point
+  const onNumberChange = (val: string, setter: (s: string) => void) => {
+    // allow empty
+    if (val === "") return setter("")
+    // allow only numbers and single dot
+    const sanitized = val.replace(/[^\d.]/g, "")
+    const parts = sanitized.split(".")
+    if (parts.length <= 2) {
+      // remove leading zeros unless decimal
+      const [intPart, decPart] = parts
+      const cleanInt = intPart.replace(/^0+(?=\d)/, "")
+      setter(decPart !== undefined ? `${cleanInt}.${decPart}` : cleanInt)
+    }
+  }
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
-    setMessage(null)
-    if (!file) return setMessage("Please select an image")
     setLoading(true)
 
     try {
+      if (!title.trim()) return toast.error("Title is required")
+      if (!description.trim()) return toast.error("Description is required")
+      if (!file) return toast.error("Please select an image")
+      // parse numbers safely
+      const price = priceStr === "" ? 0 : Number(priceStr)
+      const pointValue = pointValueStr === "" ? 0 : Number(pointValueStr)
+      if (Number.isNaN(price) || Number.isNaN(pointValue)) return toast.error("Invalid numeric values")
+
       const token = localStorage.getItem("adminToken")
       // Get signature + timestamp + cloudName + apiKey
       const signRes = await fetch("/api/admin/cloudinary/sign", { headers: { Authorization: `Bearer ${token}` } })
@@ -43,8 +77,8 @@ export default function AdminHaircutsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          title,
-          description,
+          title: title.trim(),
+          description: description.trim(),
           price,
           pointValue,
           image: uploadData.secure_url,
@@ -54,54 +88,138 @@ export default function AdminHaircutsPage() {
       const createData = await createRes.json()
       if (!createRes.ok) throw new Error(createData.error || "Failed to create haircut")
 
-      setMessage("Haircut uploaded successfully")
+      toast.success("Haircut uploaded successfully")
+      // reset form
       setTitle("")
       setDescription("")
-      setPrice(0)
-      setPointValue(0)
+      setPriceStr("")
+      setPointValueStr("")
       setFile(null)
+      setPreview(null)
     } catch (err: any) {
       console.error("Upload error", err)
-      setMessage(err.message || "Upload failed")
+      toast.error(err?.message || "Upload failed")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="container py-12">
-      <h1 className="text-2xl font-bold mb-6">Upload Haircut</h1>
-      <form onSubmit={handleUpload} className="space-y-4 max-w-lg">
+    <div className="max-w-3xl mx-auto py-12 px-4">
+      <h1 className="text-3xl font-extrabold mb-6">Create Haircut</h1>
+
+      <form onSubmit={handleUpload} className="space-y-6 bg-white p-6 rounded-lg shadow">
         <div>
-          <label className="block text-sm font-medium mb-1">Title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border rounded" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-3 py-2 border rounded" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Price</label>
-            <input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))} className="w-full px-3 py-2 border rounded" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Point Value</label>
-            <input type="number" value={pointValue} onChange={(e) => setPointValue(Number(e.target.value))} className="w-full px-3 py-2 border rounded" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Image</label>
-          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <label className="block text-sm font-medium mb-2">Title</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="e.g. Classic Cut"
+          />
         </div>
 
         <div>
-          <button type="submit" disabled={loading} className="px-4 py-2 bg-primary text-white rounded">
+          <label className="block text-sm font-medium mb-2">Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+            rows={4}
+            placeholder="Short description shown on services page"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Price (NGN)</label>
+            <input
+              inputMode="decimal"
+              value={priceStr}
+              onChange={(e) => onNumberChange(e.target.value, setPriceStr)}
+              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Point Value</label>
+            <input
+              inputMode="numeric"
+              value={pointValueStr}
+              onChange={(e) => onNumberChange(e.target.value, setPointValueStr)}
+              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g. 10"
+              min="0"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Image</label>
+          <div className="flex items-center gap-4">
+            <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-gray-50 border rounded">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="hidden"
+              />
+              <span className="text-sm text-gray-700">Choose image</span>
+            </label>
+
+            {preview ? (
+              <div className="relative">
+                <img src={preview} alt="preview" className="w-28 h-20 object-cover rounded border" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null)
+                    setPreview(null)
+                  }}
+                  className="absolute -top-2 -right-2 bg-white border rounded-full w-6 h-6 text-xs flex items-center justify-center"
+                  aria-label="remove image"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">No image selected</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-2 bg-primary text-white rounded font-semibold hover:opacity-95 disabled:opacity-60"
+          >
             {loading ? "Uploading..." : "Upload Haircut"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTitle("")
+              setDescription("")
+              setPriceStr("")
+              setPointValueStr("")
+              setFile(null)
+              setPreview(null)
+            }}
+            className="px-4 py-2 border rounded text-sm"
+          >
+            Reset
           </button>
         </div>
 
-        {message && <p className="text-sm mt-2">{message}</p>}
+        <p className="text-xs text-gray-500">
+          Image will be uploaded to Cloudinary. Price and point values must be numbers. Use the reset button to clear the form.
+        </p>
       </form>
     </div>
   )

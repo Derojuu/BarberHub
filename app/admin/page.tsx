@@ -61,13 +61,13 @@ export default function AdminDashboard() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => router.push("/admin/haircuts")}
-                className="px-4 py-2 bg-primary text-light rounded-lg hover:bg-opacity-90 transition"
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 Manage Haircuts
               </button>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-light transition"
+                className="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 Logout
               </button>

@@ -12,42 +12,47 @@ export async function POST(request: NextRequest) {
     }
 
     const decoded = verifyToken(token)
-    if (!decoded || decoded.role !== "customer") {
-      return NextResponse.json({ error: "Customer access required" }, { status: 403 })
+    if (!decoded) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const { haircutId } = await request.json()
-
     if (!haircutId) {
       return NextResponse.json({ error: "Missing haircutId" }, { status: 400 })
     }
 
-    // Get haircut to verify it exists and get point value
-    const haircut = await prisma.haircut.findUnique({
-      where: { id: Number.parseInt(haircutId) },
-    })
+    const userIdNum = Number(decoded.id)
+    if (!Number.isFinite(userIdNum) || Number.isNaN(userIdNum)) {
+      return NextResponse.json({ error: "Invalid token payload" }, { status: 401 })
+    }
 
+    // read haircut to determine points value
+    const hid = Number.parseInt(String(haircutId))
+    if (!Number.isFinite(hid) || Number.isNaN(hid)) {
+      return NextResponse.json({ error: "Invalid haircutId" }, { status: 400 })
+    }
+
+    const haircut = await prisma.haircut.findUnique({ where: { id: hid } })
     if (!haircut) {
       return NextResponse.json({ error: "Haircut not found" }, { status: 404 })
     }
 
-    // Create pending points record
-    const points = await prisma.points.create({
+    // determine points to award for this haircut (use schema field `pointValue`)
+    const pointsValue = Number(haircut.pointValue ?? 0)
+
+    // create pending Points record with the correct points value
+    const pointsRecord = await prisma.points.create({
       data: {
-        userId: decoded.userId,
-        haircutId: Number.parseInt(haircutId),
-        points: haircut.pointValue,
+        userId: userIdNum,
+        haircutId: hid,
+        points: pointsValue,
         status: "pending",
-      },
-      include: {
-        haircut: true,
-        user: true,
       },
     })
 
-    return NextResponse.json({ points }, { status: 201 })
-  } catch (error) {
-    console.error("Purchase error:", error)
-    return NextResponse.json({ error: "Failed to process purchase" }, { status: 500 })
+    return NextResponse.json({ points: pointsRecord }, { status: 201 })
+  } catch (err) {
+    console.error("Create purchase error:", err)
+    return NextResponse.json({ error: "Failed to create purchase" }, { status: 500 })
   }
 }

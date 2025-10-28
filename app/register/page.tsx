@@ -55,7 +55,8 @@ export default function Register() {
       }
 
       localStorage.setItem("token", data.token)
-      localStorage.setItem("user", JSON.stringify(data.user))
+      // store initial user with timestamp so later updates are merged safely
+      localStorage.setItem("user", JSON.stringify({ ...data.user, _pointsUpdatedAt: Date.now() }))
       window.location.href = "/dashboard"
     } catch (err) {
       setError("An error occurred. Please try again.")

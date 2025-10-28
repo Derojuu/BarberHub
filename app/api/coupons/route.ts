@@ -1,89 +1,73 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { PrismaClient } from "@prisma/client"
 import { verifyToken } from "@/lib/auth"
-import { nanoid } from "nanoid"
 
 const prisma = new PrismaClient()
+const COUPON_COST = 100 // adjust if you keep this configurable elsewhere
 
-const COUPON_COST = 100 // points required to buy a free haircut coupon
+function generateCode(len = 8) {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+  let s = ""
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return s
+}
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const token = request.headers.get("authorization")?.replace("Bearer ", "")
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
-
-    // Return coupons assigned to the authenticated user
-    const coupons = await prisma.coupon.findMany({
-      where: { userId: decoded.userId },
-      orderBy: { createdAt: "desc" },
-    })
-
-    return NextResponse.json({ coupons })
-  } catch (error) {
-    console.error("Fetch coupons error:", error)
-    return NextResponse.json({ error: "Failed to fetch coupons" }, { status: 500 })
+    return NextResponse.json({ cost: COUPON_COST })
+  } catch (err) {
+    return NextResponse.json({ error: "Failed to load config" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get("authorization")?.replace("Bearer ", "")
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+    if (!decoded) return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+
+    // coerce decoded.id to a numeric userId for Prisma (Prisma schema uses number ids)
+    const userIdNum = Number(decoded.id)
+    if (!Number.isFinite(userIdNum) || Number.isNaN(userIdNum)) {
+      return NextResponse.json({ error: "Invalid token payload" }, { status: 401 })
     }
 
-    // Customer redeems points to buy a coupon
-    const { expiryDate } = await request.json()
-
-    // Reload user to get latest balance
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } })
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
-
-    if (((user as any).pointsBalance ?? 0) < COUPON_COST) {
-      return NextResponse.json({ error: "Insufficient points" }, { status: 400 })
-    }
-
-    // Atomically re-check balance and decrement then create coupon inside a transaction
-    const couponCode = `BARBER-FREE-${nanoid(8).toUpperCase()}`
-
+    // Atomic transaction: re-read user's pointsBalance, validate, decrement, create coupon
     const result = await prisma.$transaction(async (tx) => {
-      // cast to any to avoid TS errors if Prisma client hasn't been regenerated locally
-      const freshUser = (await tx.user.findUnique({ where: { id: user.id } })) as any
-      if (!freshUser) throw new Error("User not found")
-      if ((freshUser.pointsBalance ?? 0) < COUPON_COST) {
+      const user = await tx.user.findUnique({ where: { id: userIdNum } })
+      if (!user) throw new Error("User not found")
+
+      const balance = user.pointsBalance ?? 0
+      if (balance < COUPON_COST) {
         throw new Error("Insufficient points")
       }
 
-  const updatedUser = (await tx.user.update({ where: { id: user.id }, data: ({ pointsBalance: { decrement: COUPON_COST } } as any) })) as any
+      const newBalance = Math.max(0, balance - COUPON_COST)
 
+      // create coupon and update balance in single transaction
       const coupon = await tx.coupon.create({
         data: {
-          userId: user.id,
-          code: couponCode,
+          userId: userIdNum,
+          code: generateCode(10),
           isUsed: false,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
         },
       })
 
-      return { updatedUser, coupon }
+      await tx.user.update({
+        where: { id: userIdNum },
+        data: { pointsBalance: newBalance },
+      })
+
+      return { coupon, newBalance }
     })
 
-    return NextResponse.json({ coupon: result.coupon, pointsBalance: (result.updatedUser as any).pointsBalance })
-  } catch (error) {
+    return NextResponse.json({ coupon: result.coupon, pointsBalance: result.newBalance })
+  } catch (error: any) {
+    if (error.message === "Insufficient points") {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error("Buy coupon error:", error)
     return NextResponse.json({ error: "Failed to buy coupon" }, { status: 500 })
   }

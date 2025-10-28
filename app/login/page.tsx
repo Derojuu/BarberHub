@@ -33,7 +33,8 @@ export default function Login() {
       }
 
       localStorage.setItem("token", data.token)
-      localStorage.setItem("user", JSON.stringify(data.user))
+      // include timestamp to mark this as the authoritative baseline
+      localStorage.setItem("user", JSON.stringify({ ...data.user, _pointsUpdatedAt: Date.now() }))
       window.location.href = "/dashboard"
     } catch (err) {
       setError("An error occurred. Please try again.")
@@ -97,7 +98,7 @@ export default function Login() {
             </p>
 
             <p className="text-center text-foreground opacity-75 text-sm mt-2">
-              Are you an admin?{' '}
+              Are you an admin?{" "}
               <Link href="/admin/login" className="text-primary font-semibold hover:underline">
                 Admin login
               </Link>

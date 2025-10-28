@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 
 interface Admin {
   id: string
@@ -41,6 +42,7 @@ export default function AdminPanel({ admin }: { admin: Admin }) {
       setTransactions(data.transactions || [])
     } catch (err) {
       console.error("Failed to fetch transactions:", err)
+      toast.error("Failed to load transactions")
     } finally {
       setLoading(false)
     }
@@ -55,18 +57,17 @@ export default function AdminPanel({ admin }: { admin: Admin }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ pointsId: transactionId, status: "approved" }),
       })
+      const payload = await res.json()
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || "Failed to validate points")
+        throw new Error(payload.error || "Failed to validate points")
       }
+      toast.success("Transaction approved")
       fetchTransactions()
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to approve transaction:", err)
-      alert("Failed to approve transaction")
+      toast.error(err?.message || "Failed to approve transaction")
     }
   }
-
-  
 
   return (
     <div className="space-y-8">
@@ -85,15 +86,15 @@ export default function AdminPanel({ admin }: { admin: Admin }) {
               })
               const data = await res.json()
               if (!res.ok) {
-                alert(data.error || "Failed to verify coupon")
+                toast.error(data.error || "Failed to verify coupon")
               } else {
-                alert(`Coupon verified for ${data.updatedCoupon.user.username}`)
+                toast.success(`Coupon verified for ${data.updatedCoupon.user.username}`)
                 setCouponCode("")
                 fetchTransactions()
               }
             } catch (err) {
               console.error(err)
-              alert("Failed to verify coupon")
+              toast.error("Failed to verify coupon")
             }
           }}
           className="space-y-4 max-w-md"
@@ -111,7 +112,7 @@ export default function AdminPanel({ admin }: { admin: Admin }) {
 
           <button
             type="submit"
-            className="w-full py-2 bg-primary text-light rounded-lg font-semibold hover:bg-opacity-90 transition"
+            className="w-full py-2 bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 transition"
           >
             Verify Coupon
           </button>
@@ -145,7 +146,7 @@ export default function AdminPanel({ admin }: { admin: Admin }) {
                   </div>
                   <button
                     onClick={() => handleApproveTransaction(transaction.id)}
-                    className="px-4 py-2 bg-primary text-light rounded-lg hover:bg-opacity-90 transition"
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
                   >
                     Approve
                   </button>
