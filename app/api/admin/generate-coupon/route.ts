@@ -1,23 +1,23 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json()
+    // validation
+    const code = String(body?.code ?? `C-${Date.now().toString(36)}`)
 
-    // Lazy import Prisma only at runtime
-    const { default: prisma } = await import("@/lib/prisma");
+    // server-only DB call
+    const data: any = { code, isUsed: false }
+    if (body?.expiresAt) data.expiresAt = new Date(body.expiresAt)
 
-    // Generate a coupon code
-    const code = String(body?.code ?? `C-${Date.now().toString(36)}`);
-    const data: any = { code, isUsed: false };
+    const coupon = await prisma.coupon.create({
+      data,
+    })
 
-    if (body?.expiresAt) data.expiresAt = new Date(body.expiresAt);
-
-    const coupon = await prisma.coupon.create({ data });
-
-    return NextResponse.json({ coupon });
+    return NextResponse.json({ coupon })
   } catch (err) {
-    console.error("generate-coupon error:", err);
-    return NextResponse.json({ error: "Failed to generate coupon" }, { status: 500 });
+    console.error("generate-coupon error:", err)
+    return NextResponse.json({ error: "Failed to generate coupon" }, { status: 500 })
   }
 }
